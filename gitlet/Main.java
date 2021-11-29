@@ -61,6 +61,15 @@ public class Main {
                 Repository.branch(args[1]);
             }
 
+            case "reset" -> {
+                Repository.reset(args[1]);
+            }
+
+            case "rm-branch" -> {
+                String branchName = args[1];
+                Repository.removeBranch(branchName);
+            }
+
             case "checkout" -> {
                 switch (args.length) {
 
@@ -81,6 +90,10 @@ public class Main {
                         String fileName = args[3];
                         String commitId = args[1];
                         Repository.checkout(commitId, fileName);
+                    }
+
+                    case 2 -> {
+                        Repository.checkoutBranch(args[1]);
                     }
 
                     default -> MyUtils.exit("Incorrect operands.");

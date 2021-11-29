@@ -293,44 +293,14 @@ public class Repository {
         Branch currBranch = Branch.fromFile(Branch.getActiveBranchName());
         Branch checkoutBranch = Branch.fromFile(branchName);
 
-        for (String fileName : plainFilenamesIn(CWD)) {
-            File sourceFile = Utils.join(CWD, fileName);
-            String filePath = sourceFile.getPath();
-            Blob blob = new Blob(sourceFile);
-            String blobId = blob.getId();
-
-            Map<String, String> checkoutTracked = checkoutBranch.getHEADCommit().getTracked();
-            Map<String, String> currTracked = currBranch.getHEADCommit().getTracked();
-
-            boolean isInCurrBranch = currBranch.getHEADCommit().getTracked().containsKey(filePath);
-            boolean isInCheckoutBranch = checkoutBranch.getHEADCommit().getTracked().containsKey(filePath);
-
-            // 1. cwd version is different from checkout version (same file name)
-            if (!isInCurrBranch && isInCheckoutBranch && (!blobId.equals(checkoutTracked.get(filePath)))) {
-                MyUtils.exit("There is an untracked file in the way; delete it, or add and commit it first.");
-            }
-
-            // 2. isIncheckout isIncurrB curr!=cwd checkout!=cwd
-            if (isInCheckoutBranch && isInCurrBranch) {
-                if (!blobId.equals(checkoutTracked.get(filePath)) && !blobId.equals(currTracked.get(filePath))) {
-                    MyUtils.exit("There is an untracked file in the way; delete it, or add and commit it first.");
-                }
-            }
-        }
+        checkUntrackedFile(checkoutBranch.getHEADCommit());
 
         // case 4: put all given branch file to CWD
 
 
         // Any files that are tracked in the current branch but are not
         // present in the checked-out branch are deleted.
-        for (File cwdFile: getCWDFiles()) {
-            boolean isInCurrBranch = currBranch.getHEADCommit().getTracked().containsKey(cwdFile.getPath());
-            boolean isInCheckoutBranch = checkoutBranch.getHEADCommit().getTracked().containsKey(cwdFile.getPath());
-
-            if (isInCurrBranch && !isInCheckoutBranch) {
-                cwdFile.delete();
-            }
-        }
+        deleteUntrackedFiles(checkoutBranch.getHEADCommit());
 
         // restore all files in checkout HEADCommit to CWD
         checkoutCommit(checkoutBranch.getHEADCommit());
@@ -356,8 +326,44 @@ public class Repository {
     }
 
 
+    /** rmeove the branch */
+    public static void removeBranch(String branchName) {
+        File branchFile = Utils.join(BRANCHES_DIR, branchName);
+
+        // branch doesn't exist
+        if (!branchFile.exists()) {
+            MyUtils.exit("A branch with that name does not exist.");
+        }
+
+        // cannot remove current branch
+        if (branchName.equals(Branch.getActiveBranchName())) {
+            MyUtils.exit("Cannot remove the current branch.");
+        }
+
+        branchFile.delete();
+    }
+
+    /** Reset to commit with the id. */
+    public static void reset(String commitId) {
+        commitId = getFullCommitId(commitId);
+        Commit commit = Commit.fromFile(commitId);
+
+        // check untracked files
+        checkUntrackedFile(commit);
+
+
+        // delete files that are tracked in curr but not tracked in checkout commit
+        deleteUntrackedFiles(commit);
+
+        // checkout the commit  restore files
+        checkoutCommit(commit);
+
+        setHEADPointer(commitId);
+    }
+
+
     /** create initial staging area */
-    public static void createInitialStagingArea() {
+    private static void createInitialStagingArea() {
         StagingArea initialStagingArea = new StagingArea();
         initialStagingArea.save();
     }
@@ -485,4 +491,51 @@ public class Repository {
         activeBranch.saveActiveBranch();
     }
 
+    /** case 3: Check If a working file is untracked in the current commit
+     * and would be overwritten by the checkout
+     * */
+    private static void checkUntrackedFile(Commit commit) {
+        for (String fileName : plainFilenamesIn(CWD)) {
+            File sourceFile = Utils.join(CWD, fileName);
+            String filePath = sourceFile.getPath();
+            Blob blob = new Blob(sourceFile);
+            String blobId = blob.getId();
+
+            Map<String, String> checkoutTracked = commit.getTracked();
+            Map<String, String> currTracked = getHEADCommit().getTracked();
+
+            boolean isInCurr = currTracked.containsKey(filePath);
+            boolean isInCheckout = checkoutTracked.containsKey(filePath);
+
+            // 1. cwd version is different from checkout version (same file name)
+            if (!isInCurr && isInCheckout && (!blobId.equals(checkoutTracked.get(filePath)))) {
+                MyUtils.exit("There is an untracked file in the way; delete it, or add and commit it first.");
+            }
+
+            // 2. isIncheckout isIncurrB curr!=cwd checkout!=cwd
+            if (isInCheckout && isInCurr) {
+                if (!blobId.equals(checkoutTracked.get(filePath)) && !blobId.equals(currTracked.get(filePath))) {
+                    MyUtils.exit("There is an untracked file in the way; delete it, or add and commit it first.");
+                }
+            }
+        }
+    }
+
+    /** delete files
+     * Any files that are tracked in the current branch
+     * but are not present in the checked-out commit are deleted.
+     * */
+    private static void deleteUntrackedFiles(Commit commit) {
+        Map<String, String> currTracked = getHEADCommit().getTracked();
+        Map<String, String> checkoutTracked = commit.getTracked();
+
+        for (File cwdFile: getCWDFiles()) {
+            boolean isInCurrBranch = currTracked.containsKey(cwdFile.getPath());
+            boolean isInCheckoutBranch = checkoutTracked.containsKey(cwdFile.getPath());
+
+            if (isInCurrBranch && !isInCheckoutBranch) {
+                cwdFile.delete();
+            }
+        }
+    }
 }
